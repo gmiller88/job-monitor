@@ -29,18 +29,28 @@ GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 IS_FIRST_RUN = not SEEN_JOBS_FILE.exists() or os.environ.get("FORCE_FIRST_RUN") == "true"
 
 TITLE_PATTERNS = [
-    r"\bvp\b.{0,30}product marketing",
-    r"vice president.{0,30}product marketing",
-    r"sr\.?\s+director.{0,30}product marketing",
-    r"senior director.{0,30}product marketing",
-    r"vp.{0,30}pmm",
-    r"sr\.?\s+director.{0,30}pmm",
-    r"senior director.{0,30}pmm",
-    r"head of product marketing",
-    r"director.{0,10}product marketing",
-    r"principal.{0,10}product marketing",
+    r"\bvp\b.{0,40}product marketing",
+    r"vice president.{0,40}product marketing",
+    r"\bsr\.?\s+director.{0,40}product marketing",
+    r"\bsenior director.{0,40}product marketing",
+    r"\bvp\b.{0,40}\bpmm\b",
+    r"\bsr\.?\s+director.{0,40}\bpmm\b",
+    r"\bsenior director.{0,40}\bpmm\b",
+    r"\bhead of product marketing",
 ]
 TITLE_RE = re.compile("|".join(TITLE_PATTERNS), re.IGNORECASE)
+
+# Location strings that indicate a role is NOT remote
+NONREMOTE_RE = re.compile(
+    r"\bhybrid\b|\bin.?office\b|\bon.?site\b|\bin.?person\b",
+    re.IGNORECASE,
+)
+
+def is_remote_location(location: str) -> bool:
+    """Return False if the location explicitly signals hybrid or in-person."""
+    if not location:
+        return True  # unknown → don't filter out
+    return not NONREMOTE_RE.search(location)
 
 HEADERS = {
     "User-Agent": (
@@ -80,16 +90,12 @@ def get_greenhouse_jobs(ats_id: str, company_name: str) -> list[dict]:
         jobs = []
         for job in data.get("jobs", []):
             title = job.get("title", "")
-            if title_matches(title):
-                location = ""
-                for loc in job.get("offices", []):
-                    location = loc.get("name", "")
-                    break
-                if not location:
-                    for loc in job.get("location", {}).get("name", "").split(","):
-                        location = loc.strip()
-                        break
-                jobs.append({
+            if not title_matches(title):
+                continue
+            location = job.get("location", {}).get("name", "")
+            if not is_remote_location(location):
+                continue
+            jobs.append({
                     "id": str(job.get("id", "")),
                     "company": company_name,
                     "title": title,
@@ -113,8 +119,12 @@ def get_lever_jobs(ats_id: str, company_name: str) -> list[dict]:
         jobs = []
         for job in data:
             title = job.get("text", "")
-            if title_matches(title):
-                jobs.append({
+            if not title_matches(title):
+                continue
+            location = job.get("categories", {}).get("location", "")
+            if not is_remote_location(location):
+                continue
+            jobs.append({
                     "id": job.get("id", ""),
                     "company": company_name,
                     "title": title,
@@ -138,8 +148,12 @@ def get_ashby_jobs(ats_id: str, company_name: str) -> list[dict]:
         jobs = []
         for job in data.get("jobs", []):
             title = job.get("title", "")
-            if title_matches(title):
-                jobs.append({
+            if not title_matches(title):
+                continue
+            location = job.get("location", "")
+            if not is_remote_location(location):
+                continue
+            jobs.append({
                     "id": job.get("id", ""),
                     "company": company_name,
                     "title": title,
